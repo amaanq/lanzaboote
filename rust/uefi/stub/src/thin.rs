@@ -15,48 +15,48 @@ type Hash = sha2::digest::Output<Sha256>;
 /// After this stub is built, lzbt needs to embed configuration into the binary by adding PE
 /// sections. This struct represents that information.
 struct EmbeddedConfiguration {
-    /// The filename of the kernel to be booted. This filename is
-    /// relative to the root of the volume that contains the
-    /// lanzaboote binary.
-    kernel_filename: CString16,
+   /// The filename of the kernel to be booted. This filename is
+   /// relative to the root of the volume that contains the
+   /// lanzaboote binary.
+   kernel_filename: CString16,
 
-    /// The cryptographic hash of the kernel.
-    kernel_hash: Hash,
+   /// The cryptographic hash of the kernel.
+   kernel_hash: Hash,
 
-    /// The filename of the initrd to be passed to the kernel. See
-    /// `kernel_filename` for how to interpret these filenames.
-    initrd_filename: CString16,
+   /// The filename of the initrd to be passed to the kernel. See
+   /// `kernel_filename` for how to interpret these filenames.
+   initrd_filename: CString16,
 
-    /// The cryptographic hash of the initrd. This hash is computed
-    /// over the whole PE binary, not only the embedded initrd.
-    initrd_hash: Hash,
+   /// The cryptographic hash of the initrd. This hash is computed
+   /// over the whole PE binary, not only the embedded initrd.
+   initrd_hash: Hash,
 
-    /// The kernel command-line.
-    cmdline: CString16,
+   /// The kernel command-line.
+   cmdline: CString16,
 }
 
 /// Extract a SHA256 hash from a PE section.
 fn extract_hash(pe_data: &[u8], section: &str) -> Result<Hash> {
-    let array: [u8; 32] = pe_section(pe_data, section)
-        .ok_or(Status::INVALID_PARAMETER)?
-        .try_into()
-        .map_err(|_| Status::INVALID_PARAMETER)?;
+   let array: [u8; 32] = pe_section(pe_data, section)
+      .ok_or(Status::INVALID_PARAMETER)?
+      .try_into()
+      .map_err(|_| Status::INVALID_PARAMETER)?;
 
-    Ok(array.into())
+   Ok(array.into())
 }
 
 impl EmbeddedConfiguration {
-    fn new(file_data: &[u8]) -> Result<Self> {
-        Ok(Self {
-            kernel_filename: extract_string(file_data, ".linux")?,
-            kernel_hash: extract_hash(file_data, ".linuxh")?,
+   fn new(file_data: &[u8]) -> Result<Self> {
+      Ok(Self {
+         kernel_filename: extract_string(file_data, ".linux")?,
+         kernel_hash: extract_hash(file_data, ".linuxh")?,
 
-            initrd_filename: extract_string(file_data, ".initrd")?,
-            initrd_hash: extract_hash(file_data, ".initrdh")?,
+         initrd_filename: extract_string(file_data, ".initrd")?,
+         initrd_hash: extract_hash(file_data, ".initrdh")?,
 
-            cmdline: extract_string(file_data, ".cmdline")?,
-        })
-    }
+         cmdline: extract_string(file_data, ".cmdline")?,
+      })
+   }
 }
 
 /// Verify some data against its expected hash.
@@ -65,81 +65,81 @@ impl EmbeddedConfiguration {
 /// * If Secure Boot is active, an error message is logged, and the SECURITY_VIOLATION error is returned to stop the boot.
 /// * If Secure Boot is not active, only a warning is logged, and the boot process is allowed to continue.
 fn check_hash(data: &[u8], expected_hash: Hash, name: &str, secure_boot: bool) -> uefi::Result<()> {
-    let hash_correct = Sha256::digest(data) == expected_hash;
-    if !hash_correct {
-        if secure_boot {
-            error!("{name} hash does not match!");
-            return Err(Status::SECURITY_VIOLATION.into());
-        } else {
-            warn!("{name} hash does not match! Continuing anyway.");
-        }
-    }
-    Ok(())
+   let hash_correct = Sha256::digest(data) == expected_hash;
+   if !hash_correct {
+      if secure_boot {
+         error!("{name} hash does not match!");
+         return Err(Status::SECURITY_VIOLATION.into());
+      } else {
+         warn!("{name} hash does not match! Continuing anyway.");
+      }
+   }
+   Ok(())
 }
 
 pub fn boot_linux(handle: Handle, dynamic_initrds: Vec<Vec<u8>>) -> uefi::Result<()> {
-    // SAFETY: We get a slice that represents our currently running
-    // image and then parse the PE data structures from it. This is
-    // safe, because we don't touch any data in the data sections that
-    // might conceivably change while we look at the slice.
-    let config = unsafe {
-        EmbeddedConfiguration::new(booted_image_file().unwrap().as_slice())
-            .expect("Failed to extract configuration from binary. Did you run lzbt?")
-    };
+   // SAFETY: We get a slice that represents our currently running
+   // image and then parse the PE data structures from it. This is
+   // safe, because we don't touch any data in the data sections that
+   // might conceivably change while we look at the slice.
+   let config = unsafe {
+      EmbeddedConfiguration::new(booted_image_file().unwrap().as_slice())
+         .expect("Failed to extract configuration from binary. Did you run lzbt?")
+   };
 
-    let secure_boot_enabled = get_secure_boot_status();
+   let secure_boot_enabled = get_secure_boot_status();
 
-    let kernel_data;
-    let mut initrd_data;
+   let kernel_data;
+   let mut initrd_data;
 
-    {
-        let file_system =
-            uefi::boot::get_image_file_system(handle).expect("Failed to get file system handle");
-        let mut file_system = FileSystem::new(file_system);
+   {
+      let file_system =
+         uefi::boot::get_image_file_system(handle).expect("Failed to get file system handle");
+      let mut file_system = FileSystem::new(file_system);
 
-        kernel_data = file_system
-            .read(&*config.kernel_filename)
-            .expect("Failed to read kernel file into memory");
-        initrd_data = file_system
-            .read(&*config.initrd_filename)
-            .expect("Failed to read initrd file into memory");
-    }
+      kernel_data = file_system
+         .read(&*config.kernel_filename)
+         .expect("Failed to read kernel file into memory");
+      initrd_data = file_system
+         .read(&*config.initrd_filename)
+         .expect("Failed to read initrd file into memory");
+   }
 
-    let cmdline = get_cmdline(&config.cmdline, secure_boot_enabled);
+   let cmdline = get_cmdline(&config.cmdline, secure_boot_enabled);
 
-    check_hash(
-        &kernel_data,
-        config.kernel_hash,
-        "Kernel",
-        secure_boot_enabled,
-    )?;
-    check_hash(
-        &initrd_data,
-        config.initrd_hash,
-        "Initrd",
-        secure_boot_enabled,
-    )?;
+   check_hash(
+      &kernel_data,
+      config.kernel_hash,
+      "Kernel",
+      secure_boot_enabled,
+   )?;
+   check_hash(
+      &initrd_data,
+      config.initrd_hash,
+      "Initrd",
+      secure_boot_enabled,
+   )?;
 
-    // Correctness: dynamic initrds are supposed to be validated by caller,
-    // i.e. they are system extension images or credentials
-    // that are supposedly measured in TPM2.
-    // Therefore, it is normal to not verify their hashes against a configuration.
+   // Correctness: dynamic initrds are supposed to be validated by caller,
+   // i.e. they are system extension images or credentials
+   // that are supposedly measured in TPM2.
+   // Therefore, it is normal to not verify their hashes against a configuration.
 
-    /// Compute the necessary padding based on the provided length
-    /// It returns None if no padding is necessary.
-    fn compute_pad4(len: usize) -> Vec<u8> {
-        vec![0u8; (4 - (len % 4)) % 4]
-    }
+   /// Compute the necessary padding based on the provided length
+   /// It returns None if no padding is necessary.
+   fn compute_pad4(len: usize) -> Vec<u8> {
+      vec![0u8; (4 - (len % 4)) % 4]
+   }
 
-    initrd_data.append(&mut compute_pad4(initrd_data.len()));
-    for mut extra_initrd in dynamic_initrds {
-        // Uncomment for maximal debugging pleasure.
-        // let debug_representation = extra_initrd.as_slice().escape_ascii().collect::<Vec<u8>>();
-        // log::warn!("{:?}", String::from_utf8_lossy(&debug_representation));
-        initrd_data.append(&mut extra_initrd);
-        // Extra initrds ideally should be aligned, but just in case, let's verify this.
-        initrd_data.append(&mut compute_pad4(initrd_data.len()));
-    }
+   initrd_data.append(&mut compute_pad4(initrd_data.len()));
+   for mut extra_initrd in dynamic_initrds {
+      // Uncomment for maximal debugging pleasure.
+      // let debug_representation = extra_initrd.as_slice().escape_ascii().collect::<Vec<u8>>();
+      // log::warn!("{:?}", String::from_utf8_lossy(&debug_representation));
+      initrd_data.append(&mut extra_initrd);
+      // Extra initrds ideally should be aligned, but just in case, let's verify this.
+      initrd_data.append(&mut compute_pad4(initrd_data.len()));
+   }
 
-    boot_linux_unchecked(handle, kernel_data, &cmdline, initrd_data)
+   boot_linux_unchecked(handle, kernel_data, &cmdline, initrd_data)
 }

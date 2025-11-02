@@ -9,5 +9,5 @@ use clap::Parser;
 use cli::Cli;
 
 fn main() {
-    Cli::parse().call(module_path!())
+   Cli::parse().call(module_path!())
 }
