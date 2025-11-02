@@ -1,20 +1,14 @@
 [workspace]
 resolver = "2"
 
-members = [
-    "shared",
-    "systemd",
-]
+members = [ "shared", "systemd" ]
 
-default-members = [
-    "shared",
-    "systemd"
-]
+default-members = [ "shared", "systemd" ]
 
 [workspace.package]
-version = "0.4.2"
 edition = "2021"
+version = "0.4.2"
 
 [profile.release]
+lto       = true
 opt-level = "s"
-lto = true
